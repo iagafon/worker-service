@@ -50,6 +50,9 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/iagafon/*
+      GONOSUMDB: github.com/iagafon/*
     # Запускается параллельно с build и lint
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +62,26 @@ jobs:
         with:
           go-version: "1.25"
           cache-dependency-path: go.sum
+
+      - name: Start ssh-agent and add deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Configure SSH for github.com
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts
+          git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
+
+      - name: Configure Go env
+        run: |
+          go env -w GOPRIVATE=${GOPRIVATE}
+          go env -w GONOSUMDB=${GONOSUMDB}
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Run tests
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
@@ -74,6 +97,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/iagafon/*
+      GONOSUMDB: github.com/iagafon/*
     steps:
       - uses: actions/checkout@v4
 
@@ -82,6 +108,26 @@ jobs:
         with:
           go-version: "1.25"
           cache-dependency-path: go.sum
+
+      - name: Start ssh-agent and add deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Configure SSH for github.com
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts
+          git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
+
+      - name: Configure Go env
+        run: |
+          go env -w GOPRIVATE=${GOPRIVATE}
+          go env -w GONOSUMDB=${GONOSUMDB}
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
@@ -92,6 +138,9 @@ jobs:
   mod-check:
     name: Go Mod Check
     runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/iagafon/*
+      GONOSUMDB: github.com/iagafon/*
     steps:
       - uses: actions/checkout@v4
 
@@ -100,6 +149,23 @@ jobs:
         with:
           go-version: "1.25"
           cache-dependency-path: go.sum
+
+      - name: Start ssh-agent and add deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Configure SSH for github.com
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts
+          git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
+
+      - name: Configure Go env
+        run: |
+          go env -w GOPRIVATE=${GOPRIVATE}
+          go env -w GONOSUMDB=${GONOSUMDB}
 
       - name: Check go.mod/go.sum
         run: |
