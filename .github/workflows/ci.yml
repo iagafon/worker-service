@@ -28,6 +28,17 @@ jobs:
           ssh-private-key: |
             ${{ secrets.SSH_PRIVATE_KEY }}
 
+      - name: Configure SSH for github.com
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts
+          git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
+
+      - name: Configure Go env
+        run: |
+          go env -w GOPRIVATE=${GOPRIVATE}
+          go env -w GONOSUMDB=${GONOSUMDB}
+
       - name: Download dependencies
         run: go mod download
 
