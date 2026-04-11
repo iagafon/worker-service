@@ -1,0 +1,45 @@
+# -----------------------
+# Build outputs
+# -----------------------
+/bin/
+/build/
+*.exe
+*.out
+*.test
+
+# -----------------------
+# Dependency directories
+# -----------------------
+vendor/
+
+# -----------------------
+# IDE / editor settings
+# -----------------------
+.idea/
+*.iml
+.vscode/
+*.swp
+*.bak
+
+# -----------------------
+# Logs and temporary files
+# -----------------------
+*.log
+*.tmp
+
+# -----------------------
+# Environment and local config
+# -----------------------
+.env
+!env.example
+config.local.*
+
+# -----------------------
+# MacOS
+# -----------------------
+.DS_Store
+
+# -----------------------
+# Docs
+# -----------------------
+Makefile
