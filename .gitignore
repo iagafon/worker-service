@@ -15,7 +15,7 @@ worker-service
 *.log
 
 # Зависимости
- vendor/
+#vendor/
 
 # Тестовые артефакты
 coverage.out
