@@ -10,15 +10,15 @@ services:
   # PostgreSQL
   # ---------------------------------------------------------------------------- #
   postgres:
-    container_name: "mom_bp_postgres"
+    container_name: "worker-postgres"
     image: "postgres:16-alpine"
     restart: "unless-stopped"
     ports:
-      - "5432:5432"
+      - "5431:5432"
     environment:
       POSTGRES_USER: "testuser"
       POSTGRES_PASSWORD: "testpass"
-      POSTGRES_DB: "testdb"
+      POSTGRES_DB: "worker_service"
     volumes:
       - "mom_bp_postgres_data:/var/lib/postgresql/data"
     networks:

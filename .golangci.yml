@@ -7,7 +7,7 @@ output:
       colors: true
 
 run:
-  go: "1.24"
+  go: "1.25"
   timeout: 10m
   build-tags:
     - mock
@@ -107,7 +107,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/MoM-Repo/worker-service)
+        - prefix(github.com/iagafon/worker-service)
         - blank
         - dot
       custom-order: true

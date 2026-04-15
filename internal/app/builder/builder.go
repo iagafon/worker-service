@@ -9,13 +9,20 @@ import (
 	"sync"
 	"syscall"
 
+	broker "github.com/iagafon/pkg-broker"
+	"github.com/iagafon/pkg-broker/codec"
+	"github.com/iagafon/pkg-broker/util"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 
 	"github.com/iagafon/worker-service/internal/app/config"
+	"github.com/iagafon/worker-service/internal/app/entity"
+	ehandler "github.com/iagafon/worker-service/internal/app/handler/event"
+	"github.com/iagafon/worker-service/internal/app/handler/event/order"
 	rhandler "github.com/iagafon/worker-service/internal/app/handler/http"
 	"github.com/iagafon/worker-service/internal/app/handler/http/example"
 	"github.com/iagafon/worker-service/internal/app/processor"
+	eprocessor "github.com/iagafon/worker-service/internal/app/processor/event"
 	rprocessor "github.com/iagafon/worker-service/internal/app/processor/http"
 	pprocessor "github.com/iagafon/worker-service/internal/app/processor/other"
 	rcpostgres "github.com/iagafon/worker-service/internal/app/repository/conn/postgres"
@@ -25,13 +32,19 @@ import (
 // Builder — структура для сборки зависимостей приложения.
 // Использует паттерн Builder для последовательной инициализации компонентов.
 type Builder struct {
-	cCtx *cli.Context
-	ctx  context.Context
-	wg   sync.WaitGroup
-	err  error
+	cCtx     *cli.Context
+	ctx      context.Context
+	wg       sync.WaitGroup
+	err      error
+	chErrors chan error
+
+	cfg *config.Config
 
 	// Подключения
 	connPostgres *rcpostgres.Client
+
+	brokerKafka     *broker.KafkaClient
+	busOrderCreated broker.Bus[entity.EventOrderCreated]
 
 	// Процессоры
 	processors []processor.Processor
@@ -41,6 +54,8 @@ type Builder struct {
 
 	// Handlers
 	hExample rhandler.Example
+
+	handlerEventOrder ehandler.Order
 
 	// TODO: Добавить при необходимости:
 	// - repositories
@@ -53,7 +68,7 @@ type Builder struct {
 // NewBuilder создаёт новый Builder и настраивает обработку сигналов OS.
 // При получении SIGINT/SIGTERM контекст будет отменён.
 func NewBuilder(cCtx *cli.Context) *Builder {
-	b := Builder{cCtx: cCtx}
+	b := Builder{cCtx: cCtx, chErrors: make(chan error, 4096)} // <- добавить chErrors
 	var cancelFunc func()
 	b.ctx, cancelFunc = context.WithCancel(context.Background())
 
@@ -61,6 +76,7 @@ func NewBuilder(cCtx *cli.Context) *Builder {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	go b.waitForSignal(sig, cancelFunc)
+	go b.printErrors() // <- добавить
 
 	return &b
 }
@@ -99,6 +115,16 @@ func (b *Builder) buildConfig(args config.LoadArgs, injectors []func(c *config.C
 			injector(&config.Root)
 		}
 	}
+
+	b.cfg = &config.Root
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///// BROKER ///////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+func (b *Builder) BuildBrokerKafka() {
+	b.exec(true, (*Builder).buildBrokerKafka)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,6 +167,12 @@ func (b *Builder) BuildHandlerExample() {
 	})
 }
 
+func (b *Builder) BuildHandlerEventOrder() {
+	b.exec(true, func(b *Builder) {
+		b.handlerEventOrder = order.NewHandler()
+	})
+}
+
 // TODO: Добавить методы для других handlers:
 // func (b *Builder) BuildHandlerUser() { ... }
 
@@ -155,6 +187,10 @@ func (b *Builder) BuildProcHttp() {
 		proc := rprocessor.NewHTTP(b.hExample, b.middlewares, cfg)
 		b.processors = append(b.processors, proc)
 	})
+}
+
+func (b *Builder) BuildProcEventSubscribeOrderCreated() {
+	b.exec(true, (*Builder).buildProcEventSubscribeOrderCreated, b.handlerEventOrder, b.busOrderCreated)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,6 +217,42 @@ func (b *Builder) Run() {
 ///// INTERNAL /////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+func (b *Builder) buildProcEventSubscribeOrderCreated() {
+	proc := eprocessor.NewOrderCreatedEventsCatcher(b.handlerEventOrder, b.busOrderCreated)
+	b.processors = append(b.processors, proc)
+	log.Info().Msg("Processor ORDER_CREATED registered")
+}
+
+func (b *Builder) buildBrokerKafka() {
+	kafkaConfig := broker.KafkaConfig{
+		Addresses:     b.cfg.Broker.Kafka.Addresses,
+		ConsumerGroup: b.cfg.Broker.Kafka.ConsumerGroup,
+		ClientID:      b.cfg.Broker.Kafka.ClientID,
+	}
+	log.Debug().
+		Any("addresses", kafkaConfig.Addresses).
+		Str("group", b.cfg.Broker.Kafka.ConsumerGroup).
+		Msg("kafka config")
+
+	var err error
+
+	if b.brokerKafka, err = broker.NewKafkaClient(kafkaConfig); err != nil {
+		b.err = fmt.Errorf("failed to create kafka client: %w", err)
+		return
+	}
+
+	type T1 = entity.EventOrderCreated
+
+	c := codec.NewCodecJson[T1]()
+
+	b.busOrderCreated = broker.MustKafkaBus(
+		b.brokerKafka,
+		c,
+		b.cfg.Broker.Kafka.ModelOrder.Created.Topic,
+		util.Coalesce(b.cfg.Broker.Kafka.ConsumerGroup, b.cfg.Broker.Kafka.ModelOrder.Created.ConsumerGroup),
+	)
+}
+
 // waitForSignal ожидает сигнал и вызывает cancelFunc.
 func (b *Builder) waitForSignal(sig chan os.Signal, cancelFunc func()) {
 	gotSig := <-sig
@@ -188,13 +260,6 @@ func (b *Builder) waitForSignal(sig chan os.Signal, cancelFunc func()) {
 	cancelFunc()
 }
 
-// exec выполняет callback только если:
-// - preCond == true
-// - нет предыдущих ошибок
-// - контекст не отменён
-// - все requiredArgs не nil/zero
-//
-//nolint:unparam // requiredArgs используется в других методах
 func (b *Builder) exec(preCond bool, cb func(b *Builder), requiredArgs ...any) {
 	if !preCond || b.err != nil || b.ctx.Err() != nil {
 		return
@@ -211,4 +276,10 @@ func (b *Builder) exec(preCond bool, cb func(b *Builder), requiredArgs ...any) {
 	}
 
 	cb(b)
+}
+
+func (b *Builder) printErrors() {
+	for err := range b.chErrors {
+		log.Error().Err(err).Msg("Got new error")
+	}
 }

@@ -18,6 +18,7 @@ type (
 		Repository section.Repository
 		Processor  section.Processor
 		Monitor    section.Monitor
+		Broker     section.Broker
 		Meta       Meta `ignore:"true"`
 	}
 
