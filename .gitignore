@@ -20,6 +20,7 @@ worker-service
 # Тестовые артефакты
 coverage.out
 coverage.html
+cmd/test_currency/main.go
 
 # Proto generated code
 api/gen/

@@ -19,4 +19,19 @@ var (
 
 	// ErrUnauthorized — требуется авторизация.
 	ErrUnauthorized = errors.New("entity: unauthorized")
+
+	// ErrFixerInvalidApiKey — неверный API ключ Fixer.
+	ErrFixerInvalidApiKey = errors.New("fixer: invalid api key")
+
+	// ErrFixerRateLimitExceeded — превышен лимит запросов к Fixer API.
+	ErrFixerRateLimitExceeded = errors.New("fixer: rate limit exceeded")
+
+	// ErrFixerUnavailable — сервис Fixer недоступен.
+	ErrFixerUnavailable = errors.New("fixer: service unavailable")
+
+	// ErrFixerInvalidResponse — некорректный ответ от Fixer API.
+	ErrFixerInvalidResponse = errors.New("fixer: invalid response")
+
+	// ErrFixerCurrencyNotFound — валюта не найдена в Fixer API.
+	ErrFixerCurrencyNotFound = errors.New("fixer: currency not found")
 )

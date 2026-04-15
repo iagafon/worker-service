@@ -33,14 +33,11 @@ func WebServer() *cli.Command {
 func cmdWebServer(cCtx *cli.Context) error {
 	app := builder.NewBuilder(cCtx)
 	app.BuildConfig()
-
-	// Подключение к БД (опционально, раскомментируйте при необходимости)
-	// app.BuildRepoConnPostgres()
 	app.BuildRepoConnRedis()
+	app.BuildRepoCurrencyRate()
 
-	// TODO: Добавить репозитории и модули:
-	// app.BuildRepoXxx()      // Репозитории
-	// app.BuildModuleXxx()    // Модули бизнес-логики
+	app.BuildModuleClient()
+	app.BuildModuleCurrency()
 
 	// Handlers
 	app.BuildHandlerExample()

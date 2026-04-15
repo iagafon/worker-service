@@ -19,6 +19,7 @@ type (
 		Processor  section.Processor
 		Monitor    section.Monitor
 		Broker     section.Broker
+		Client     section.Client
 		Meta       Meta `ignore:"true"`
 	}
 
