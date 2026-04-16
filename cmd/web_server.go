@@ -36,6 +36,7 @@ func cmdWebServer(cCtx *cli.Context) error {
 
 	// Подключение к БД (опционально, раскомментируйте при необходимости)
 	// app.BuildRepoConnPostgres()
+	app.BuildRepoConnRedis()
 
 	// TODO: Добавить репозитории и модули:
 	// app.BuildRepoXxx()      // Репозитории

@@ -26,6 +26,7 @@ import (
 	rprocessor "github.com/iagafon/worker-service/internal/app/processor/http"
 	pprocessor "github.com/iagafon/worker-service/internal/app/processor/other"
 	rcpostgres "github.com/iagafon/worker-service/internal/app/repository/conn/postgres"
+	rcredis "github.com/iagafon/worker-service/internal/app/repository/conn/redis"
 	"github.com/iagafon/worker-service/internal/pkg/http/httph"
 )
 
@@ -42,6 +43,7 @@ type Builder struct {
 
 	// Подключения
 	connPostgres *rcpostgres.Client
+	connRedis    *rcredis.Client
 
 	brokerKafka     *broker.KafkaClient
 	busOrderCreated broker.Bus[entity.EventOrderCreated]
@@ -152,6 +154,13 @@ func (b *Builder) BuildRepoConnMigrator() {
 	b.exec(b.connPostgres != nil, func(b *Builder) {
 		proc := pprocessor.NewMigrator(b.connPostgres)
 		b.processors = append(b.processors, proc)
+	})
+}
+
+func (b *Builder) BuildRepoConnRedis() {
+	b.exec(true, func(b *Builder) {
+		cfg := config.Root.Repository.Redis
+		b.connRedis, b.err = rcredis.NewConn(b.ctx, cfg)
 	})
 }
 
