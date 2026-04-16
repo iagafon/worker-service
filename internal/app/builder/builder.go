@@ -11,11 +11,13 @@ import (
 
 	broker "github.com/iagafon/pkg-broker"
 	"github.com/iagafon/pkg-broker/codec"
-	"github.com/iagafon/pkg-broker/util"
+	putil "github.com/iagafon/pkg-broker/util"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 
+	"github.com/iagafon/worker-service/internal/app/client/fixer"
 	"github.com/iagafon/worker-service/internal/app/config"
+	"github.com/iagafon/worker-service/internal/app/config/section"
 	"github.com/iagafon/worker-service/internal/app/entity"
 	ehandler "github.com/iagafon/worker-service/internal/app/handler/event"
 	"github.com/iagafon/worker-service/internal/app/handler/event/order"
@@ -25,8 +27,11 @@ import (
 	eprocessor "github.com/iagafon/worker-service/internal/app/processor/event"
 	rprocessor "github.com/iagafon/worker-service/internal/app/processor/http"
 	pprocessor "github.com/iagafon/worker-service/internal/app/processor/other"
+	"github.com/iagafon/worker-service/internal/app/repository"
 	rcpostgres "github.com/iagafon/worker-service/internal/app/repository/conn/postgres"
 	rcredis "github.com/iagafon/worker-service/internal/app/repository/conn/redis"
+	rcurrency "github.com/iagafon/worker-service/internal/app/repository/currency"
+	scurrency "github.com/iagafon/worker-service/internal/app/service/currency"
 	"github.com/iagafon/worker-service/internal/pkg/http/httph"
 )
 
@@ -44,6 +49,7 @@ type Builder struct {
 	// Подключения
 	connPostgres *rcpostgres.Client
 	connRedis    *rcredis.Client
+	fixerClient  *fixer.Client
 
 	brokerKafka     *broker.KafkaClient
 	busOrderCreated broker.Bus[entity.EventOrderCreated]
@@ -54,15 +60,18 @@ type Builder struct {
 	// HTTP middleware (OpenTelemetry, NewRelic, и др.)
 	middlewares []httph.Middleware
 
+	// Репозитории
+	repoCurrencyRate repository.CurrencyRate
+
 	// Handlers
 	hExample rhandler.Example
 
 	handlerEventOrder ehandler.Order
 
+	// Модули
+	moduleCurrency *scurrency.Service
+
 	// TODO: Добавить при необходимости:
-	// - repositories
-	// - modules
-	// - handlers
 	// - brokers (Kafka)
 	// - monitors (OpenTelemetry, Prometheus)
 }
@@ -164,6 +173,40 @@ func (b *Builder) BuildRepoConnRedis() {
 	})
 }
 
+// BuildRepoCurrencyRate initializes the currency rate repository.
+func (b *Builder) BuildRepoCurrencyRate() {
+	b.exec(true, (*Builder).buildRepoCurrencyRate, b.connRedis)
+}
+
+func (b *Builder) buildRepoCurrencyRate() {
+	cfg := b.cfg.Client.Fixer
+	b.repoCurrencyRate = rcurrency.NewRedisRepository(b.connRedis, cfg.CacheTTL)
+	log.Info().Msg("Currency rate repository created")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///// MODULES //////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+func (b *Builder) BuildModuleClient() {
+	b.exec(true, func(b *Builder) {
+		b.fixerClient = fixer.NewClient(section.ClientFixer{
+			ApiKey:  b.cfg.Client.Fixer.ApiKey,
+			BaseURL: b.cfg.Client.Fixer.BaseURL,
+		})
+	})
+}
+
+// BuildModuleCurrency initializes currency service.
+func (b *Builder) BuildModuleCurrency() {
+	b.exec(true, (*Builder).buildModuleCurrency, b.fixerClient, b.repoCurrencyRate)
+}
+
+func (b *Builder) buildModuleCurrency() {
+	b.moduleCurrency = scurrency.NewService(b.fixerClient, b.repoCurrencyRate)
+	log.Info().Msg("Currency service created")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///// HANDLERS /////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,7 +301,7 @@ func (b *Builder) buildBrokerKafka() {
 		b.brokerKafka,
 		c,
 		b.cfg.Broker.Kafka.ModelOrder.Created.Topic,
-		util.Coalesce(b.cfg.Broker.Kafka.ConsumerGroup, b.cfg.Broker.Kafka.ModelOrder.Created.ConsumerGroup),
+		putil.Coalesce(b.cfg.Broker.Kafka.ConsumerGroup, b.cfg.Broker.Kafka.ModelOrder.Created.ConsumerGroup),
 	)
 }
 

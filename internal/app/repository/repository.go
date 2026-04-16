@@ -21,6 +21,18 @@ type (
 		Close() error
 	}
 
+	// CurrencyRate — интерфейс для работы с кэшем курсов валют.
+	CurrencyRate interface {
+		// GetRate возвращает курс валюты из кэша.
+		GetRate(ctx context.Context, from, to string) (float64, error)
+
+		// SetRate сохраняет курс валюты в кэш.
+		SetRate(ctx context.Context, from, to string, rate float64) error
+
+		// SetRates сохраняет множество курсов валют в кэш.
+		SetRates(ctx context.Context, from string, rates map[string]float64) error
+	}
+
 	// TODO: Добавьте интерфейсы репозиториев для вашего проекта.
 	// Пример:
 	//
