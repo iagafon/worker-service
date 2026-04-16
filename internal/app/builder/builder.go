@@ -31,7 +31,9 @@ import (
 	rcpostgres "github.com/iagafon/worker-service/internal/app/repository/conn/postgres"
 	rcredis "github.com/iagafon/worker-service/internal/app/repository/conn/redis"
 	rcurrency "github.com/iagafon/worker-service/internal/app/repository/currency"
+	"github.com/iagafon/worker-service/internal/app/service"
 	scurrency "github.com/iagafon/worker-service/internal/app/service/currency"
+	sdelivery "github.com/iagafon/worker-service/internal/app/service/delivery"
 	"github.com/iagafon/worker-service/internal/pkg/http/httph"
 )
 
@@ -51,8 +53,9 @@ type Builder struct {
 	connRedis    *rcredis.Client
 	fixerClient  *fixer.Client
 
-	brokerKafka     *broker.KafkaClient
-	busOrderCreated broker.Bus[entity.EventOrderCreated]
+	brokerKafka                *broker.KafkaClient
+	busOrderCreated            broker.Bus[entity.EventOrderCreated]
+	busOrderDeliveryCalculated broker.Bus[entity.EventOrderDeliveryCalculated]
 
 	// Процессоры
 	processors []processor.Processor
@@ -69,11 +72,8 @@ type Builder struct {
 	handlerEventOrder ehandler.Order
 
 	// Модули
-	moduleCurrency *scurrency.Service
-
-	// TODO: Добавить при необходимости:
-	// - brokers (Kafka)
-	// - monitors (OpenTelemetry, Prometheus)
+	moduleCurrency service.Currency
+	moduleDelivery service.Delivery
 }
 
 // NewBuilder создаёт новый Builder и настраивает обработку сигналов OS.
@@ -207,6 +207,15 @@ func (b *Builder) buildModuleCurrency() {
 	log.Info().Msg("Currency service created")
 }
 
+func (b *Builder) BuildModuleDelivery() {
+	b.exec(true, (*Builder).buildModuleDelivery, b.moduleCurrency)
+}
+
+func (b *Builder) buildModuleDelivery() {
+	b.moduleDelivery = sdelivery.NewService(b.moduleCurrency)
+	log.Info().Msg("Delivery service created")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///// HANDLERS /////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,8 +230,8 @@ func (b *Builder) BuildHandlerExample() {
 
 func (b *Builder) BuildHandlerEventOrder() {
 	b.exec(true, func(b *Builder) {
-		b.handlerEventOrder = order.NewHandler()
-	})
+		b.handlerEventOrder = order.NewHandler(b.moduleDelivery, b.busOrderDeliveryCalculated)
+	}, b.moduleDelivery, b.busOrderDeliveryCalculated)
 }
 
 // TODO: Добавить методы для других handlers:
@@ -294,15 +303,25 @@ func (b *Builder) buildBrokerKafka() {
 	}
 
 	type T1 = entity.EventOrderCreated
+	type T2 = entity.EventOrderDeliveryCalculated
 
-	c := codec.NewCodecJson[T1]()
+	t1codec := codec.NewCodecJson[T1]()
+	t2codec := codec.NewCodecJson[T2]()
 
 	b.busOrderCreated = broker.MustKafkaBus(
 		b.brokerKafka,
-		c,
+		t1codec,
 		b.cfg.Broker.Kafka.ModelOrder.Created.Topic,
 		putil.Coalesce(b.cfg.Broker.Kafka.ConsumerGroup, b.cfg.Broker.Kafka.ModelOrder.Created.ConsumerGroup),
 	)
+
+	b.busOrderDeliveryCalculated = broker.MustKafkaBus(
+		b.brokerKafka,
+		t2codec,
+		b.cfg.Broker.Kafka.ModelOrder.DeliveryCalculated.Topic,
+		putil.Coalesce(b.cfg.Broker.Kafka.ConsumerGroup, b.cfg.Broker.Kafka.ModelOrder.Created.ConsumerGroup),
+	)
+	log.Info().Msg("Kafka buses created")
 }
 
 // waitForSignal ожидает сигнал и вызывает cancelFunc.

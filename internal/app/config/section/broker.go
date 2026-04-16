@@ -14,11 +14,16 @@ type (
 	}
 
 	BrokerKafkaModelOrder struct {
-		Created BrokerKafkaModelOrderCreated
+		Created            BrokerKafkaModelOrderCreated
+		DeliveryCalculated BrokerKafkaModelOrderDeliveryCalculated
 	}
 
 	BrokerKafkaModelOrderCreated struct {
 		Topic         string `envconfig:"APP_BROKER_KAFKA_MODEL_ORDER_CREATED_TOPIC" default:"order.created"`
 		ConsumerGroup string `envconfig:"APP_BROKER_KAFKA_MODEL_ORDER_CREATED_CONSUMER_GROUP"`
+	}
+
+	BrokerKafkaModelOrderDeliveryCalculated struct {
+		Topic string `envcofig:"APP_BROKER_KAFKA_MODEL_ORDER_DELIVERY_CALCULATED_TOPIC" default:"order.delivery.calculated"`
 	}
 )
